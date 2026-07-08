@@ -1,0 +1,736 @@
+<!DOCTYPE html>
+<html dir="rtl" lang="ar">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Chat</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@200;300;400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.1/cropper.min.css">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.39.0/dist/umd/supabase.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.1/cropper.min.js"></script>
+<script>
+tailwind.config = {
+    theme: {
+        extend: {
+            fontFamily: {
+                sans: ['Inter', 'system-ui', 'sans-serif'],
+            },
+            colors: {
+                app: {
+                    bg: '#0F0F11',
+                    surface: '#121214',
+                    elevated: '#18181C',
+                    border: 'rgba(255,255,255,0.06)',
+                },
+                bubble: {
+                    me: '#22252D',
+                    other: '#1C1E24',
+                },
+                text: {
+                    primary: '#F5F5F5',
+                    secondary: '#E5E7EB',
+                    muted: '#9CA3AF',
+                    faint: '#6B7280',
+                }
+            }
+        }
+    }
+}
+</script>
+<style>
+* { -webkit-tap-highlight-color: transparent; -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
+body { font-family: 'Inter', system-ui, sans-serif; background-color: #0F0F11; color: #F5F5F5; overflow: hidden; touch-action: manipulation; }
+::selection { background: rgba(255,255,255,0.12); color: #fff; }
+.custom-scroll::-webkit-scrollbar { width: 4px; }
+.custom-scroll::-webkit-scrollbar-track { background: transparent; }
+.custom-scroll::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.08); border-radius: 4px; }
+.chat-row { transition: background-color 0.15s ease; }
+.chat-row:hover { background-color: rgba(255,255,255,0.03); }
+.chat-row.active { background-color: rgba(255,255,255,0.05); }
+.bubble-me { background-color: #22252D; color: #F5F5F5; }
+.bubble-other { background-color: #1C1E24; color: #E5E7EB; }
+.input-field:focus { outline: none; }
+.send-btn { transition: opacity 0.15s ease, transform 0.1s ease; }
+.send-btn:active { transform: scale(0.92); opacity: 0.7; }
+.screen-transition { transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1); }
+.msg-enter { animation: msgIn 0.2s ease-out forwards; }
+@keyframes msgIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+.typing-dot { width: 5px; height: 5px; background: rgba(255,255,255,0.4); border-radius: 50%; display: inline-block; animation: typing 1.4s infinite ease-in-out both; }
+.typing-dot:nth-child(1) { animation-delay: 0s; }
+.typing-dot:nth-child(2) { animation-delay: 0.16s; }
+.typing-dot:nth-child(3) { animation-delay: 0.32s; }
+@keyframes typing { 0%, 80%, 100% { transform: scale(0.6); opacity: 0.4; } 40% { transform: scale(1); opacity: 1; } }
+.status-dot { width: 7px; height: 7px; border-radius: 50%; display: inline-block; }
+.status-online { background-color: #4ADE80; }
+.status-offline { background-color: #525252; }
+.icon-btn { transition: color 0.15s ease; }
+.icon-btn:hover { color: #F5F5F5; }
+.search-input::placeholder, .msg-input::placeholder { color: #6B7280; }
+.cropper-modal { display: none; position: fixed; inset: 0; z-index: 100; background: rgba(0,0,0,0.85); backdrop-filter: blur(8px); align-items: center; justify-content: center; padding: 20px; }
+.cropper-modal.active { display: flex; }
+.cropper-container { max-width: 500px; width: 100%; background: #18181C; border-radius: 16px; border: 1px solid rgba(255,255,255,0.06); overflow: hidden; }
+.cropper-img-box { max-height: 400px; overflow: hidden; background: #0F0F11; }
+.cropper-img-box img { max-width: 100%; display: block; }
+.auth-overlay { position: fixed; inset: 0; z-index: 90; background: rgba(15,15,17,0.95); backdrop-filter: blur(12px); display: flex; align-items: center; justify-content: center; }
+.auth-box { width: 100%; max-width: 380px; background: #18181C; border: 1px solid rgba(255,255,255,0.06); border-radius: 20px; padding: 32px; }
+.auth-input { width: 100%; background: #0F0F11; border: 1px solid rgba(255,255,255,0.08); border-radius: 12px; padding: 12px 16px; color: #F5F5F5; font-size: 14px; transition: border-color 0.2s; }
+.auth-input:focus { outline: none; border-color: rgba(255,255,255,0.2); }
+.auth-input::placeholder { color: #6B7280; }
+.auth-btn { width: 100%; background: #F5F5F5; color: #0F0F11; border: none; border-radius: 12px; padding: 12px; font-weight: 600; font-size: 14px; cursor: pointer; transition: opacity 0.2s; }
+.auth-btn:hover { opacity: 0.9; }
+.auth-btn:active { transform: scale(0.98); }
+.auth-tab { padding: 8px 16px; font-size: 13px; color: #6B7280; cursor: pointer; border-radius: 8px; transition: all 0.2s; }
+.auth-tab.active { color: #F5F5F5; background: rgba(255,255,255,0.05); }
+.toast { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%) translateY(100px); background: #18181C; border: 1px solid rgba(255,255,255,0.08); color: #F5F5F5; padding: 10px 20px; border-radius: 12px; font-size: 13px; z-index: 200; opacity: 0; transition: all 0.3s ease; pointer-events: none; }
+.toast.show { transform: translateX(-50%) translateY(0); opacity: 1; }
+.spinner { width: 20px; height: 20px; border: 2px solid rgba(255,255,255,0.1); border-top-color: #F5F5F5; border-radius: 50%; animation: spin 0.8s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.msg-image { border-radius: 8px; max-width: 240px; max-height: 320px; object-fit: cover; cursor: pointer; border: 1px solid rgba(255,255,255,0.05); }
+</style>
+</head>
+<body class="h-screen w-screen bg-[#0F0F11] text-[#F5F5F5] overflow-hidden">
+
+<div id="toast" class="toast"></div>
+
+<div id="authOverlay" class="auth-overlay" style="display:none;">
+<div class="auth-box">
+<div class="text-center mb-6">
+<div class="w-12 h-12 rounded-xl bg-[#0F0F11] border border-white/[0.06] flex items-center justify-center mx-auto mb-3">
+<i class="fas fa-comments text-lg text-[#9CA3AF]"></i>
+</div>
+<h2 class="text-lg font-semibold">تسجيل الدخول</h2>
+<p class="text-xs text-[#6B7280] mt-1">أدخل بياناتك للمتابعة</p>
+</div>
+<div class="flex gap-2 mb-5 justify-center">
+<div class="auth-tab active" onclick="switchAuthTab('login')" id="tabLogin">تسجيل الدخول</div>
+<div class="auth-tab" onclick="switchAuthTab('register')" id="tabRegister">حساب جديد</div>
+</div>
+<form id="authForm" onsubmit="handleAuth(event)">
+<div id="nameField" class="hidden mb-3">
+<input type="text" id="authName" placeholder="الاسم الكامل" class="auth-input">
+</div>
+<div class="mb-3">
+<input type="email" id="authEmail" placeholder="البريد الإلكتروني" class="auth-input" required>
+</div>
+<div class="mb-4">
+<input type="password" id="authPassword" placeholder="كلمة المرور" class="auth-input" required>
+</div>
+<button type="submit" id="authBtn" class="auth-btn">تسجيل الدخول</button>
+</form>
+<div class="mt-4 text-center">
+<p class="text-[11px] text-[#525252]">Chat App v1.0</p>
+</div>
+</div>
+</div>
+
+<div id="cropperModal" class="cropper-modal">
+<div class="cropper-container">
+<div class="flex items-center justify-between px-4 py-3 border-b border-white/[0.04]">
+<h3 class="text-sm font-medium">قص الصورة</h3>
+<button onclick="closeCropper()" class="w-8 h-8 rounded-lg flex items-center justify-center text-[#6B7280] hover:text-[#F5F5F5]">
+<i class="fas fa-xmark text-sm"></i>
+</button>
+</div>
+<div class="cropper-img-box">
+<img id="cropperImage" src="" alt="">
+</div>
+<div class="flex items-center justify-between px-4 py-3 border-t border-white/[0.04]">
+<button onclick="closeCropper()" class="text-[13px] text-[#9CA3AF] hover:text-[#F5F5F5] px-3 py-1.5 rounded-lg hover:bg-white/5 transition-all">إلغاء</button>
+<button onclick="confirmCrop()" class="text-[13px] bg-[#F5F5F5] text-[#0F0F11] font-medium px-5 py-1.5 rounded-lg hover:opacity-90 transition-all">تأكيد</button>
+</div>
+</div>
+</div>
+
+<div class="h-full w-full flex max-w-[1400px] mx-auto">
+
+<div id="chatListScreen" class="w-full md:w-[360px] lg:w-[400px] h-full flex flex-col bg-[#121214] border-l border-white/[0.04] screen-transition shrink-0">
+
+<div class="px-5 pt-5 pb-4 flex items-center justify-between shrink-0">
+<div class="flex items-center gap-3">
+<div class="relative">
+<img id="myAvatar" src="https://i.pravatar.cc/150?img=11" alt="" class="w-9 h-9 rounded-full object-cover border border-white/[0.06]">
+<div class="status-dot status-online absolute -bottom-0.5 -left-0.5 border-2 border-[#121214]"></div>
+</div>
+<div>
+<h1 class="text-[15px] font-medium tracking-tight text-[#F5F5F5]">الرسائل</h1>
+<p class="text-[11px] text-[#9CA3AF] font-light mt-0.5">متصل</p>
+</div>
+</div>
+<div class="flex items-center gap-1">
+<button onclick="logout()" class="w-8 h-8 rounded-lg flex items-center justify-center text-[#6B7280] hover:text-[#F5F5F5] icon-btn" title="خروج">
+<i class="fas fa-arrow-right-from-bracket text-[13px]"></i>
+</button>
+<button class="w-8 h-8 rounded-lg flex items-center justify-center text-[#6B7280] hover:text-[#F5F5F5] icon-btn">
+<i class="fas fa-pen-to-square text-[13px]"></i>
+</button>
+</div>
+</div>
+
+<div class="px-4 pb-3 shrink-0">
+<div class="relative">
+<i class="fas fa-magnifying-glass absolute right-3.5 top-1/2 -translate-y-1/2 text-[#6B7280] text-[11px]"></i>
+<input type="text" id="searchInput" placeholder="بحث" 
+class="w-full bg-[#18181C] border border-white/[0.05] rounded-xl py-2 pr-9 pl-3 text-[13px] text-[#F5F5F5] placeholder-[#6B7280] focus:outline-none focus:border-white/10 transition-colors search-input">
+</div>
+</div>
+
+<div id="chatList" class="flex-1 overflow-y-auto custom-scroll px-2 pb-4">
+<div class="flex flex-col items-center justify-center h-full text-[#525252]">
+<div class="spinner mb-3"></div>
+<p class="text-[12px] text-[#6B7280]">جاري التحميل...</p>
+</div>
+</div>
+</div>
+
+<div id="activeChatScreen" class="hidden md:flex flex-1 h-full flex-col bg-[#0F0F11] relative">
+
+<div id="emptyState" class="absolute inset-0 flex flex-col items-center justify-center text-[#525252]">
+<div class="w-16 h-16 rounded-full bg-[#18181C] flex items-center justify-center mb-4 border border-white/[0.04]">
+<i class="fas fa-comment text-xl"></i>
+</div>
+<p class="text-[13px] font-light text-[#9CA3AF]">اختر محادثة</p>
+</div>
+
+<div id="chatContent" class="hidden flex-col h-full">
+
+<div class="px-4 py-3 flex items-center justify-between shrink-0 border-b border-white/[0.04]">
+<div class="flex items-center gap-3">
+<button id="backBtn" class="md:hidden w-8 h-8 rounded-lg flex items-center justify-center text-[#6B7280] hover:text-[#F5F5F5]">
+<i class="fas fa-arrow-right text-[13px]"></i>
+</button>
+<div class="relative">
+<img id="headerAvatar" src="" class="w-8 h-8 rounded-full object-cover border border-white/[0.06]">
+<div id="headerOnlineDot" class="status-dot absolute -bottom-0.5 -left-0.5 border-2 border-[#0F0F11] hidden"></div>
+</div>
+<div>
+<h2 id="headerName" class="text-[14px] font-medium text-[#F5F5F5]"></h2>
+<p id="headerStatus" class="text-[11px] text-[#9CA3AF] font-light mt-0.5"></p>
+</div>
+</div>
+<div class="flex items-center gap-0.5">
+<button class="w-8 h-8 rounded-lg flex items-center justify-center text-[#6B7280] hover:text-[#F5F5F5] icon-btn">
+<i class="fas fa-phone text-[12px]"></i>
+</button>
+<button class="w-8 h-8 rounded-lg flex items-center justify-center text-[#6B7280] hover:text-[#F5F5F5] icon-btn">
+<i class="fas fa-video text-[12px]"></i>
+</button>
+<button class="w-8 h-8 rounded-lg flex items-center justify-center text-[#6B7280] hover:text-[#F5F5F5] icon-btn">
+<i class="fas fa-ellipsis-vertical text-[12px]"></i>
+</button>
+</div>
+</div>
+
+<div id="messagesArea" class="flex-1 overflow-y-auto custom-scroll px-4 py-5 space-y-1">
+<div class="flex flex-col items-center justify-center h-full text-[#525252]">
+<div class="spinner mb-3"></div>
+<p class="text-[12px] text-[#6B7280]">جاري تحميل الرسائل...</p>
+</div>
+</div>
+
+<div id="typingIndicator" class="hidden px-5 pb-1">
+<div class="bubble-other inline-flex items-center gap-[5px] px-3.5 py-2.5 rounded-md rounded-tr-sm">
+<div class="typing-dot"></div>
+<div class="typing-dot"></div>
+<div class="typing-dot"></div>
+</div>
+</div>
+
+<div class="px-4 py-3 shrink-0 border-t border-white/[0.04]">
+<div class="flex items-end gap-2">
+<button onclick="document.getElementById('imageInput').click()" class="w-8 h-8 rounded-lg flex items-center justify-center text-[#6B7280] hover:text-[#9CA3AF] icon-btn shrink-0 mb-0.5">
+<i class="fas fa-image text-[13px]"></i>
+</button>
+<input type="file" id="imageInput" accept="image/*" class="hidden" onchange="handleImageSelect(event)">
+
+<div class="flex-1 bg-[#18181C] rounded-2xl border border-white/[0.05] focus-within:border-white/10 transition-colors">
+<div class="flex items-end px-3 py-2">
+<button class="w-7 h-7 rounded-md flex items-center justify-center text-[#6B7280] hover:text-[#9CA3AF] icon-btn shrink-0">
+<i class="far fa-face-smile text-[15px]"></i>
+</button>
+<textarea id="messageInput" rows="1" placeholder="اكتب رسالة..." 
+class="flex-1 bg-transparent border-none text-[14px] text-[#F5F5F5] placeholder-[#6B7280] focus:outline-none resize-none py-1 px-2 max-h-[100px] custom-scroll input-field msg-input"
+style="min-height: 24px;"></textarea>
+<button class="w-7 h-7 rounded-md flex items-center justify-center text-[#6B7280] hover:text-[#9CA3AF] icon-btn shrink-0">
+<i class="fas fa-paperclip text-[14px]"></i>
+</button>
+</div>
+</div>
+<button id="sendBtn" class="send-btn w-8 h-8 rounded-full bg-[#F5F5F5] flex items-center justify-center text-[#0F0F11] shrink-0 mb-0.5">
+<i class="fas fa-arrow-up text-[12px]"></i>
+</button>
+</div>
+</div>
+</div>
+</div>
+</div>
+
+<script>
+const SUPABASE_URL = 'https://woslwalstvtsynxoqeab.supabase.co';
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Indvc2x3YWxzdHZ0c3lueG9xZWFiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODMxNTQ2MTYsImV4cCI6MjA5ODczMDYxNn0.rfCqKjKjvq6fcUlYyVoYDGK0Wyfr7fjc6Z3BJ67UUOk';
+
+let supabase = null;
+let currentUser = null;
+let activeChatId = null;
+let cropperInstance = null;
+let pendingImageFile = null;
+let realtimeChannel = null;
+
+async function initSupabase() {
+    supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+    const { data: { session } } = await supabase.auth.getSession();
+    if (session) {
+        currentUser = session.user;
+        await loadUserProfile();
+        document.getElementById('authOverlay').style.display = 'none';
+        await fetchChats();
+        subscribeToMessages();
+    } else {
+        document.getElementById('authOverlay').style.display = 'flex';
+    }
+    supabase.auth.onAuthStateChange(async (event, session) => {
+        if (event === 'SIGNED_IN' && session) {
+            currentUser = session.user;
+            await loadUserProfile();
+            document.getElementById('authOverlay').style.display = 'none';
+            await fetchChats();
+            subscribeToMessages();
+        } else if (event === 'SIGNED_OUT') {
+            currentUser = null;
+            document.getElementById('authOverlay').style.display = 'flex';
+            document.getElementById('chatList').innerHTML = `
+                <div class="flex flex-col items-center justify-center h-full text-[#525252]">
+                    <p class="text-[12px] text-[#6B7280]">سجل الدخول لعرض المحادثات</p>
+                </div>
+            `;
+        }
+    });
+}
+
+async function loadUserProfile() {
+    if (!currentUser) return;
+    const { data } = await supabase.from('profiles').select('*').eq('id', currentUser.id).single();
+    if (data && data.avatar_url) {
+        document.getElementById('myAvatar').src = data.avatar_url;
+    }
+}
+
+let authMode = 'login';
+
+function switchAuthTab(mode) {
+    authMode = mode;
+    document.getElementById('tabLogin').classList.toggle('active', mode === 'login');
+    document.getElementById('tabRegister').classList.toggle('active', mode === 'register');
+    document.getElementById('nameField').classList.toggle('hidden', mode === 'login');
+    document.getElementById('authBtn').textContent = mode === 'login' ? 'تسجيل الدخول' : 'إنشاء حساب';
+}
+
+async function handleAuth(e) {
+    e.preventDefault();
+    const email = document.getElementById('authEmail').value;
+    const password = document.getElementById('authPassword').value;
+    const name = document.getElementById('authName').value;
+    const btn = document.getElementById('authBtn');
+    btn.innerHTML = '<div class="spinner mx-auto"></div>';
+    btn.disabled = true;
+    try {
+        if (authMode === 'register') {
+            const { data, error } = await supabase.auth.signUp({ email, password });
+            if (error) throw error;
+            if (data.user) {
+                await supabase.from('profiles').insert({
+                    id: data.user.id,
+                    username: name || email.split('@')[0],
+                    avatar_url: `https://i.pravatar.cc/150?u=${data.user.id}`,
+                    status: 'متصل الآن'
+                });
+            }
+            showToast('تم إنشاء الحساب! تحقق من بريدك لتأكيده');
+        } else {
+            const { error } = await supabase.auth.signInWithPassword({ email, password });
+            if (error) throw error;
+        }
+    } catch (err) {
+        showToast(err.message || 'حدث خطأ');
+    } finally {
+        btn.textContent = authMode === 'login' ? 'تسجيل الدخول' : 'إنشاء حساب';
+        btn.disabled = false;
+    }
+}
+
+async function logout() {
+    if (realtimeChannel) {
+        await supabase.removeChannel(realtimeChannel);
+        realtimeChannel = null;
+    }
+    await supabase.auth.signOut();
+    activeChatId = null;
+}
+
+async function fetchChats() {
+    if (!currentUser) return;
+    const { data, error } = await supabase
+        .from('participants')
+        .select(`
+            chat_id,
+            chats:chat_id (
+                id, name, type, avatar_url, created_at,
+                messages ( id, content, media_url, sender_id, created_at, is_read, sender:sender_id (username) )
+            ),
+            profiles!inner (id, username, avatar_url, status)
+        `)
+        .eq('user_id', currentUser.id)
+        .order('created_at', { ascending: false });
+    if (error) {
+        console.error('fetchChats error:', error);
+        return;
+    }
+    renderChatList(data || []);
+}
+
+function renderChatList(participants) {
+    const list = document.getElementById('chatList');
+    if (!participants.length) {
+        list.innerHTML = `
+            <div class="flex flex-col items-center justify-center h-full text-[#525252] px-6">
+                <p class="text-[12px] text-[#6B7280] text-center">لا توجد محادثات بعد.<br>ابدأ محادثة جديدة!</p>
+            </div>
+        `;
+        return;
+    }
+    list.innerHTML = participants.map(p => {
+        const chat = p.chats;
+        const otherProfile = p.profiles;
+        const msgs = chat.messages || [];
+        const lastMsg = msgs[msgs.length - 1];
+        const unreadCount = msgs.filter(m => m.sender_id !== currentUser.id && !m.is_read).length;
+        const isOnline = otherProfile?.status === 'متصل الآن';
+        const chatName = chat.type === 'group' ? chat.name : (otherProfile?.username || 'مستخدم');
+        const avatar = chat.type === 'group' ? (chat.avatar_url || 'https://i.pravatar.cc/150?img=8') : (otherProfile?.avatar_url || `https://i.pravatar.cc/150?u=${otherProfile?.id}`);
+        const lastText = lastMsg ? (lastMsg.media_url ? 'صورة' : lastMsg.content) : 'ابدأ المحادثة';
+        const time = lastMsg ? formatTime(lastMsg.created_at) : '';
+        return `
+            <div class="chat-row flex items-center gap-3 px-3 py-3 rounded-xl cursor-pointer ${activeChatId === chat.id ? 'active' : ''}" 
+                 onclick="openChat('${chat.id}', '${chatName}', '${avatar}', '${otherProfile?.status || ''}', ${chat.type === 'group'})">
+                <div class="relative shrink-0">
+                    <img src="${avatar}" class="w-10 h-10 rounded-full object-cover border border-white/[0.06]">
+                    ${!chat.type === 'group' && isOnline ? `<div class="status-dot status-online absolute -bottom-0.5 -left-0.5 border-2 border-[#121214]"></div>` : ''}
+                </div>
+                <div class="flex-1 min-w-0">
+                    <div class="flex items-center justify-between mb-0.5">
+                        <h3 class="text-[13px] font-medium text-[#F5F5F5] truncate">${chatName}</h3>
+                        <span class="text-[10px] text-[#9CA3AF] font-light ${unreadCount > 0 ? 'text-[#F5F5F5] font-medium' : ''}">${time}</span>
+                    </div>
+                    <div class="flex items-center justify-between">
+                        <p class="text-[12px] text-[#9CA3AF] truncate max-w-[190px] font-light">${lastText}</p>
+                        ${unreadCount > 0 ? `
+                            <span class="min-w-[18px] h-[18px] rounded-full bg-[#F5F5F5] text-[#0F0F11] flex items-center justify-center text-[10px] font-medium px-1.5 ml-1">
+                                ${unreadCount}
+                            </span>
+                        ` : ''}
+                    </div>
+                </div>
+            </div>
+        `;
+    }).join('');
+}
+
+async function openChat(chatId, name, avatar, status, isGroup) {
+    activeChatId = chatId;
+    document.getElementById('emptyState').classList.add('hidden');
+    document.getElementById('chatContent').classList.remove('hidden');
+    document.getElementById('chatContent').classList.add('flex');
+    document.getElementById('headerAvatar').src = avatar;
+    document.getElementById('headerName').textContent = name;
+    document.getElementById('headerStatus').textContent = status || (isGroup ? 'محادثة جماعية' : 'آخر ظهور منذ فترة');
+    document.getElementById('headerStatus').className = `text-[11px] font-light mt-0.5 ${status === 'متصل الآن' ? 'text-[#9CA3AF]' : 'text-[#6B7280]'}`;
+    const dot = document.getElementById('headerOnlineDot');
+    if (status === 'متصل الآن' && !isGroup) {
+        dot.classList.remove('hidden');
+        dot.classList.add('status-online');
+    } else {
+        dot.classList.add('hidden');
+    }
+    await fetchMessages(chatId);
+    await markMessagesAsRead(chatId);
+    if (window.innerWidth < 768) {
+        document.getElementById('chatListScreen').classList.add('-translate-x-full');
+        document.getElementById('activeChatScreen').classList.remove('hidden');
+        document.getElementById('activeChatScreen').classList.add('flex');
+    }
+    setTimeout(() => document.getElementById('messageInput').focus(), 300);
+}
+
+async function fetchMessages(chatId) {
+    if (!chatId) return;
+    const { data, error } = await supabase
+        .from('messages')
+        .select(`
+            id, content, media_url, sender_id, created_at, is_read,
+            sender:sender_id (username, avatar_url)
+        `)
+        .eq('chat_id', chatId)
+        .order('created_at', { ascending: true });
+    if (error) {
+        console.error('fetchMessages error:', error);
+        return;
+    }
+    renderMessages(data || []);
+}
+
+function renderMessages(messages) {
+    const area = document.getElementById('messagesArea');
+    if (!messages.length) {
+        area.innerHTML = `
+            <div class="flex flex-col items-center justify-center h-full text-[#525252]">
+                <p class="text-[12px] font-light text-[#9CA3AF]">ابدأ المحادثة</p>
+            </div>
+        `;
+        return;
+    }
+    let html = '';
+    let lastDate = null;
+    messages.forEach((msg, index) => {
+        const isMe = msg.sender_id === currentUser?.id;
+        const showAvatar = !isMe && (index === 0 || messages[index - 1].sender_id !== msg.sender_id);
+        const time = formatTime(msg.created_at);
+        const date = formatDate(msg.created_at);
+        if (date !== lastDate) {
+            html += `
+                <div class="flex justify-center my-4">
+                    <span class="text-[10px] text-[#6B7280] bg-[#18181C] px-3 py-1 rounded-full border border-white/[0.04]">${date}</span>
+                </div>
+            `;
+            lastDate = date;
+        }
+        html += `
+            <div class="flex ${isMe ? 'justify-start' : 'justify-end'} mb-2 msg-enter" style="animation-delay: ${Math.min(index * 0.03, 0.3)}s">
+                <div class="flex items-end gap-2 max-w-[78%] ${isMe ? 'flex-row' : 'flex-row-reverse'}">
+                    ${!isMe && showAvatar ? `
+                        <img src="${msg.sender?.avatar_url || 'https://i.pravatar.cc/150?u=' + msg.sender_id}" class="w-5 h-5 rounded-full object-cover border border-white/[0.06] self-end mb-1">
+                    ` : !isMe ? '<div class="w-5 shrink-0"></div>' : ''}
+
+                    <div class="${isMe ? 'bubble-me' : 'bubble-other'} px-3.5 py-2 rounded-md ${isMe ? 'rounded-tl-sm' : 'rounded-tr-sm'}">
+                        ${msg.media_url ? `
+                            <img src="${msg.media_url}" class="msg-image mb-1.5" onclick="window.open('${msg.media_url}', '_blank')">
+                        ` : ''}
+                        ${msg.content ? `<p class="text-[13px] leading-relaxed font-normal ${isMe ? 'text-[#F5F5F5]' : 'text-[#E5E7EB]'}">${escapeHtml(msg.content)}</p>` : ''}
+                        <div class="flex items-center gap-1.5 mt-1 ${isMe ? 'justify-start' : 'justify-end'}">
+                            <span class="text-[10px] text-[#9CA3AF] font-light">${time}</span>
+                            ${isMe ? `
+                                <span class="text-[10px]">
+                                    ${msg.is_read ? '<i class="fas fa-check-double text-[#9CA3AF]"></i>' : 
+                                      '<i class="fas fa-check text-[#525252]"></i>'}
+                                </span>
+                            ` : ''}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+    });
+    area.innerHTML = html;
+    scrollToBottom();
+}
+
+function scrollToBottom() {
+    const area = document.getElementById('messagesArea');
+    area.scrollTop = area.scrollHeight;
+}
+
+async function sendMessage(content, mediaUrl = null) {
+    if (!activeChatId || !currentUser) return;
+    const { error } = await supabase.from('messages').insert({
+        chat_id: activeChatId,
+        sender_id: currentUser.id,
+        content: content || '',
+        media_url: mediaUrl,
+        is_read: false
+    });
+    if (error) {
+        showToast('فشل إرسال الرسالة');
+        console.error(error);
+        return;
+    }
+    await fetchMessages(activeChatId);
+    await fetchChats();
+}
+
+document.getElementById('sendBtn').addEventListener('click', () => {
+    const input = document.getElementById('messageInput');
+    const text = input.value.trim();
+    if (!text) return;
+    input.value = '';
+    input.style.height = 'auto';
+    sendMessage(text);
+});
+
+document.getElementById('messageInput').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        document.getElementById('sendBtn').click();
+    }
+});
+
+document.getElementById('messageInput').addEventListener('input', function() {
+    this.style.height = 'auto';
+    this.style.height = Math.min(this.scrollHeight, 100) + 'px';
+});
+
+function handleImageSelect(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+    if (!file.type.startsWith('image/')) {
+        showToast('يرجى اختيار صورة فقط');
+        return;
+    }
+    pendingImageFile = file;
+    const reader = new FileReader();
+    reader.onload = (event) => {
+        const img = document.getElementById('cropperImage');
+        img.src = event.target.result;
+        document.getElementById('cropperModal').classList.add('active');
+        if (cropperInstance) cropperInstance.destroy();
+        cropperInstance = new Cropper(img, {
+            aspectRatio: 1,
+            viewMode: 1,
+            background: false,
+            autoCropArea: 0.9,
+            responsive: true,
+            guides: false,
+            center: false,
+            highlight: false,
+            cropBoxMovable: true,
+            cropBoxResizable: true,
+            toggleDragModeOnDblclick: false,
+        });
+    };
+    reader.readAsDataURL(file);
+}
+
+function closeCropper() {
+    document.getElementById('cropperModal').classList.remove('active');
+    if (cropperInstance) {
+        cropperInstance.destroy();
+        cropperInstance = null;
+    }
+    pendingImageFile = null;
+    document.getElementById('imageInput').value = '';
+}
+
+async function confirmCrop() {
+    if (!cropperInstance || !pendingImageFile) return;
+    const canvas = cropperInstance.getCroppedCanvas({
+        width: 800,
+        height: 800,
+        fillColor: '#0F0F11',
+        imageSmoothingEnabled: true,
+        imageSmoothingQuality: 'high',
+    });
+    closeCropper();
+    showToast('جاري رفع الصورة...');
+    canvas.toBlob(async (blob) => {
+        const fileName = `${currentUser.id}_${Date.now()}.jpg`;
+        const { data, error } = await supabase.storage
+            .from('chat-media')
+            .upload(fileName, blob, { contentType: 'image/jpeg' });
+        if (error) {
+            showToast('فشل رفع الصورة');
+            console.error(error);
+            return;
+        }
+        const { data: urlData } = supabase.storage
+            .from('chat-media')
+            .getPublicUrl(fileName);
+        await sendMessage('', urlData.publicUrl);
+        showToast('تم إرسال الصورة');
+    }, 'image/jpeg', 0.85);
+}
+
+function subscribeToMessages() {
+    if (realtimeChannel) return;
+    realtimeChannel = supabase
+        .channel('messages-channel')
+        .on('postgres_changes', 
+            { event: '*', schema: 'public', table: 'messages' },
+            async (payload) => {
+                if (payload.eventType === 'INSERT') {
+                    if (payload.new.chat_id === activeChatId) {
+                        await fetchMessages(activeChatId);
+                        await markMessagesAsRead(activeChatId);
+                    }
+                    await fetchChats();
+                }
+            }
+        )
+        .subscribe();
+}
+
+async function markMessagesAsRead(chatId) {
+    if (!currentUser || !chatId) return;
+    await supabase
+        .from('messages')
+        .update({ is_read: true })
+        .eq('chat_id', chatId)
+        .neq('sender_id', currentUser.id)
+        .eq('is_read', false);
+}
+
+function formatTime(isoString) {
+    if (!isoString) return '';
+    const date = new Date(isoString);
+    return date.toLocaleTimeString('ar-SA', { hour: '2-digit', minute: '2-digit', hour12: true });
+}
+
+function formatDate(isoString) {
+    if (!isoString) return '';
+    const date = new Date(isoString);
+    const now = new Date();
+    const diff = now - date;
+    const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+    if (days === 0) return 'اليوم';
+    if (days === 1) return 'أمس';
+    if (days < 7) return date.toLocaleDateString('ar-SA', { weekday: 'long' });
+    return date.toLocaleDateString('ar-SA', { month: 'short', day: 'numeric' });
+}
+
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+function showToast(message) {
+    const toast = document.getElementById('toast');
+    toast.textContent = message;
+    toast.classList.add('show');
+    setTimeout(() => toast.classList.remove('show'), 3000);
+}
+
+document.getElementById('backBtn').addEventListener('click', () => {
+    document.getElementById('chatListScreen').classList.remove('-translate-x-full');
+    setTimeout(() => {
+        document.getElementById('activeChatScreen').classList.add('hidden');
+        document.getElementById('activeChatScreen').classList.remove('flex');
+    }, 250);
+    activeChatId = null;
+});
+
+window.addEventListener('resize', () => {
+    if (window.innerWidth >= 768) {
+        document.getElementById('chatListScreen').classList.remove('-translate-x-full');
+        document.getElementById('activeChatScreen').classList.remove('hidden');
+        document.getElementById('activeChatScreen').classList.add('flex');
+    } else if (!activeChatId) {
+        document.getElementById('activeChatScreen').classList.add('hidden');
+        document.getElementById('activeChatScreen').classList.remove('flex');
+    }
+});
+
+document.addEventListener('DOMContentLoaded', initSupabase);
+</script>
+</body>
+</html>
